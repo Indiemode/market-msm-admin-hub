@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -15,6 +14,13 @@ interface DashboardStats {
   recentResults: number;
 }
 
+interface RecentActivity {
+  id: string;
+  action: string;
+  time: string;
+  type: string;
+}
+
 export const AdminDashboard = () => {
   const [stats, setStats] = useState<DashboardStats>({
     totalUsers: 0,
@@ -25,6 +31,10 @@ export const AdminDashboard = () => {
     recentResults: 0,
   });
   const [loading, setLoading] = useState(true);
+
+  const [recentActivities, setRecentActivities] = useState<RecentActivity[]>([
+    { id: 'loading', action: "Loading recent activities...", time: "", type: "result" }
+  ]);
 
   useEffect(() => {
     const fetchDashboardStats = async () => {
@@ -178,10 +188,6 @@ export const AdminDashboard = () => {
   ];
 
   // Fetch recent activities from Supabase
-  const [recentActivities, setRecentActivities] = useState([
-    { id: 1, action: "Loading recent activities...", time: "", type: "result" }
-  ]);
-
   useEffect(() => {
     const fetchRecentActivities = async () => {
       try {

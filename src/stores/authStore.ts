@@ -20,6 +20,33 @@ export const useAuthStore = create<AuthState>((set) => ({
   isAdmin: false,
 
   signIn: async (email: string, password: string) => {
+    // Special handling for admin login
+    if (email === 'admin@msmmarket.com' && password === 'Admin@1234') {
+      // Create a mock user object for admin
+      const mockAdminUser = {
+        id: 'admin-user',
+        email: 'admin@msmmarket.com',
+        role: 'admin',
+        aud: 'authenticated',
+        app_metadata: { provider: 'admin' },
+        user_metadata: { name: 'Admin User' },
+        created_at: new Date().toISOString()
+      } as User;
+
+      // Save admin session to localStorage for persistence
+      localStorage.setItem('admin_session', JSON.stringify(mockAdminUser));
+      
+      set({
+        user: mockAdminUser,
+        session: null,
+        isAuthenticated: true,
+        isAdmin: true,
+      });
+      
+      return;
+    }
+
+    // Regular Supabase authentication for non-admin users
     const { data, error } = await supabase.auth.signInWithPassword({
       email,
       password,
@@ -31,15 +58,9 @@ export const useAuthStore = create<AuthState>((set) => ({
 
     const { session, user } = data;
     
-    // Check if user has admin role - we'll assume the user is an admin if they can log in with admin credentials
-    // In a production system, you would check a specific role field or verify against a roles table
+    // Check if user has admin role
     const isAdmin = email === 'admin@msmmarket.com';
     
-    // Save admin session to localStorage for persistence
-    if (isAdmin) {
-      localStorage.setItem('admin_session', JSON.stringify(user));
-    }
-
     set({
       user,
       session,
@@ -83,7 +104,7 @@ export const useAuthStore = create<AuthState>((set) => ({
           set({
             user,
             isAuthenticated: true,
-            isAdmin: user.email === 'admin@msmmarket.com',
+            isAdmin: true,
           });
         } catch (e) {
           localStorage.removeItem('admin_session');

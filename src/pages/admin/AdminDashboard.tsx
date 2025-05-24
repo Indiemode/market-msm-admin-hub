@@ -3,6 +3,8 @@ import { useState, useEffect } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Users, TrendingUp, DollarSign, Clock, AlertTriangle, CheckCircle } from 'lucide-react';
+import { supabase } from '@/integrations/supabase/client';
+import { toast } from '@/hooks/use-toast';
 
 interface DashboardStats {
   totalUsers: number;
@@ -22,17 +24,106 @@ export const AdminDashboard = () => {
     pendingPayouts: 0,
     recentResults: 0,
   });
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // Mock data - in production this would fetch from Supabase
-    setStats({
-      totalUsers: 1247,
-      activeUsers: 89,
-      todayBets: 234,
-      totalEarnings: 45670,
-      pendingPayouts: 12,
-      recentResults: 3,
-    });
+    const fetchDashboardStats = async () => {
+      try {
+        setLoading(true);
+        
+        // Get total users count from profiles table
+        const { count: totalUsers, error: profilesError } = await supabase
+          .from('profiles')
+          .select('*', { count: 'exact', head: true });
+        
+        if (profilesError) throw profilesError;
+
+        // Get bets placed today
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        
+        const { count: todayBets, error: betsError } = await supabase
+          .from('bets')
+          .select('*', { count: 'exact', head: true })
+          .gte('created_at', today.toISOString());
+        
+        if (betsError) throw betsError;
+
+        // Get pending transactions (assuming these are payouts requests)
+        const { count: pendingPayouts, error: transactionsError } = await supabase
+          .from('transactions')
+          .select('*', { count: 'exact', head: true })
+          .eq('status', 'pending');
+        
+        if (transactionsError) throw transactionsError;
+        
+        // Get total earnings (sum of transaction amounts where type is deposit)
+        const { data: earnings, error: earningsError } = await supabase
+          .from('transactions')
+          .select('amount')
+          .eq('transaction_type', 'deposit')
+          .eq('status', 'completed');
+        
+        if (earningsError) throw earningsError;
+        
+        const totalEarnings = earnings?.reduce((sum, item) => sum + (Number(item.amount) || 0), 0) || 0;
+        
+        // Get recent results count
+        const { count: recentResults, error: resultsError } = await supabase
+          .from('results')
+          .select('*', { count: 'exact', head: true })
+          .eq('status', 'declared')
+          .gte('created_at', new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString());
+        
+        if (resultsError) throw resultsError;
+
+        // For active users, we don't have login tracking in our schema
+        // So we'll count users with transactions or bets in the last 24 hours
+        const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+        
+        const { data: activeBetsUsers, error: activeBetsError } = await supabase
+          .from('bets')
+          .select('user_id')
+          .gte('created_at', oneDayAgo)
+          .order('user_id');
+          
+        if (activeBetsError) throw activeBetsError;
+          
+        const { data: activeTransactionUsers, error: activeTransError } = await supabase
+          .from('transactions')
+          .select('user_id')
+          .gte('created_at', oneDayAgo)
+          .order('user_id');
+          
+        if (activeTransError) throw activeTransError;
+          
+        // Combine and get unique active users
+        const activeUserIds = new Set([
+          ...activeBetsUsers?.map(bet => bet.user_id) || [],
+          ...activeTransactionUsers?.map(trans => trans.user_id) || []
+        ]);
+          
+        setStats({
+          totalUsers: totalUsers || 0,
+          activeUsers: activeUserIds.size,
+          todayBets: todayBets || 0,
+          totalEarnings,
+          pendingPayouts: pendingPayouts || 0,
+          recentResults: recentResults || 0,
+        });
+      } catch (error: any) {
+        console.error('Error fetching dashboard stats:', error);
+        toast({
+          title: "Error loading dashboard data",
+          description: error.message || "Could not load dashboard statistics",
+          variant: "destructive",
+        });
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchDashboardStats();
   }, []);
 
   const dashboardCards = [
@@ -86,12 +177,83 @@ export const AdminDashboard = () => {
     },
   ];
 
-  const recentActivities = [
-    { id: 1, action: "Result declared for Kalyan Morning", time: "2 hours ago", type: "result" },
-    { id: 2, action: "Payment verified for user #1234", time: "3 hours ago", type: "payment" },
-    { id: 3, action: "Payout approved for ₹5,000", time: "4 hours ago", type: "payout" },
-    { id: 4, action: "User flagged for suspicious activity", time: "5 hours ago", type: "flag" },
-  ];
+  // Fetch recent activities from Supabase
+  const [recentActivities, setRecentActivities] = useState([
+    { id: 1, action: "Loading recent activities...", time: "", type: "result" }
+  ]);
+
+  useEffect(() => {
+    const fetchRecentActivities = async () => {
+      try {
+        // Fetch the most recent results
+        const { data: recentResults, error: resultsError } = await supabase
+          .from('results')
+          .select('id, market_name, updated_at, status')
+          .order('updated_at', { ascending: false })
+          .limit(2);
+          
+        if (resultsError) throw resultsError;
+        
+        // Fetch the most recent transactions
+        const { data: recentTransactions, error: transError } = await supabase
+          .from('transactions')
+          .select('id, transaction_type, amount, updated_at, status')
+          .order('updated_at', { ascending: false })
+          .limit(3);
+          
+        if (transError) throw transError;
+
+        // Combine and format the activities
+        const activities = [
+          ...recentResults.map((result) => ({
+            id: `result-${result.id}`,
+            action: `Result ${result.status} for ${result.market_name}`,
+            time: formatTimeAgo(new Date(result.updated_at)),
+            type: 'result'
+          })),
+          ...recentTransactions.map((trans) => ({
+            id: `trans-${trans.id}`,
+            action: `${trans.transaction_type === 'deposit' ? 'Payment' : 'Payout'} of ₹${trans.amount} ${trans.status}`,
+            time: formatTimeAgo(new Date(trans.updated_at)),
+            type: trans.transaction_type === 'deposit' ? 'payment' : 'payout'
+          }))
+        ].sort((a, b) => {
+          // Sort by time (most recent first)
+          return new Date(b.time).getTime() - new Date(a.time).getTime();
+        }).slice(0, 4); // Take only the 4 most recent activities
+        
+        if (activities.length > 0) {
+          setRecentActivities(activities);
+        }
+      } catch (error) {
+        console.error('Error fetching recent activities:', error);
+      }
+    };
+
+    fetchRecentActivities();
+  }, []);
+
+  // Helper function to format time ago
+  const formatTimeAgo = (date: Date) => {
+    const seconds = Math.floor((new Date().getTime() - date.getTime()) / 1000);
+    
+    let interval = seconds / 31536000;
+    if (interval > 1) return Math.floor(interval) + ' years ago';
+    
+    interval = seconds / 2592000;
+    if (interval > 1) return Math.floor(interval) + ' months ago';
+    
+    interval = seconds / 86400;
+    if (interval > 1) return Math.floor(interval) + ' days ago';
+    
+    interval = seconds / 3600;
+    if (interval > 1) return Math.floor(interval) + ' hours ago';
+    
+    interval = seconds / 60;
+    if (interval > 1) return Math.floor(interval) + ' minutes ago';
+    
+    return Math.floor(seconds) + ' seconds ago';
+  };
 
   return (
     <div className="space-y-6">
@@ -120,7 +282,11 @@ export const AdminDashboard = () => {
                 </div>
               </CardHeader>
               <CardContent>
-                <div className="text-2xl font-bold text-gray-900">{card.value}</div>
+                {loading ? (
+                  <div className="h-7 w-24 bg-gray-200 animate-pulse rounded"></div>
+                ) : (
+                  <div className="text-2xl font-bold text-gray-900">{card.value}</div>
+                )}
                 <p className="text-xs text-gray-500 mt-1">{card.description}</p>
               </CardContent>
             </Card>

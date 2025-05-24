@@ -41,12 +41,15 @@ export const AdminDashboard = () => {
       try {
         setLoading(true);
         
-        // Get total users count from profiles table
-        const { count: totalUsers, error: profilesError } = await supabase
+        // Get total users count from auth users
+        const { count: authUsersCount, error: authError } = await supabase
           .from('profiles')
           .select('*', { count: 'exact', head: true });
         
-        if (profilesError) throw profilesError;
+        if (authError) {
+          console.error('Error fetching auth users:', authError);
+          throw authError;
+        }
 
         // Get bets placed today
         const today = new Date();
@@ -63,7 +66,8 @@ export const AdminDashboard = () => {
         const { count: pendingPayouts, error: transactionsError } = await supabase
           .from('transactions')
           .select('*', { count: 'exact', head: true })
-          .eq('status', 'pending');
+          .eq('status', 'pending')
+          .eq('transaction_type', 'withdraw');
         
         if (transactionsError) throw transactionsError;
         
@@ -87,8 +91,7 @@ export const AdminDashboard = () => {
         
         if (resultsError) throw resultsError;
 
-        // For active users, we don't have login tracking in our schema
-        // So we'll count users with transactions or bets in the last 24 hours
+        // For active users, we'll count users with transactions or bets in the last 24 hours
         const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
         
         const { data: activeBetsUsers, error: activeBetsError } = await supabase
@@ -114,7 +117,7 @@ export const AdminDashboard = () => {
         ]);
           
         setStats({
-          totalUsers: totalUsers || 0,
+          totalUsers: authUsersCount || 0,
           activeUsers: activeUserIds.size,
           todayBets: todayBets || 0,
           totalEarnings,

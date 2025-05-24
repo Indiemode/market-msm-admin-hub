@@ -7,6 +7,11 @@ import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { AdminLayout } from "./components/AdminLayout";
 import { AdminLogin } from "./pages/admin/AdminLogin";
 import { AdminDashboard } from "./pages/admin/AdminDashboard";
+import { UserManagement } from "./pages/admin/UserManagement";
+import { UserDetails } from "./pages/admin/UserDetails";
+import { PaymentVerification } from "./pages/admin/PaymentVerification";
+import { PayoutProcessing } from "./pages/admin/PayoutProcessing";
+import { ResultDeclaration } from "./pages/admin/ResultDeclaration";
 import { useAuthStore } from "./stores/authStore";
 import { useEffect } from "react";
 
@@ -37,11 +42,12 @@ const App = () => {
               <AdminLayout>
                 <Routes>
                   <Route path="dashboard" element={<AdminDashboard />} />
-                  <Route path="users" element={<div className="p-8 text-center text-gray-500">User Management - Coming Soon</div>} />
+                  <Route path="users" element={<UserManagement />} />
+                  <Route path="users/:userId" element={<UserDetails />} />
                   <Route path="games" element={<div className="p-8 text-center text-gray-500">Game Management - Coming Soon</div>} />
-                  <Route path="results" element={<div className="p-8 text-center text-gray-500">Result Declaration - Coming Soon</div>} />
-                  <Route path="payments" element={<div className="p-8 text-center text-gray-500">Payment Verification - Coming Soon</div>} />
-                  <Route path="payouts" element={<div className="p-8 text-center text-gray-500">Payout Processing - Coming Soon</div>} />
+                  <Route path="results" element={<ResultDeclaration />} />
+                  <Route path="payments" element={<PaymentVerification />} />
+                  <Route path="payouts" element={<PayoutProcessing />} />
                   <Route path="logs" element={<div className="p-8 text-center text-gray-500">Flags & Monitoring - Coming Soon</div>} />
                 </Routes>
               </AdminLayout>
